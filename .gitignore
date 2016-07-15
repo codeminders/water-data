@@ -1,0 +1,8 @@
+*.csv
+*.txt
+*.rdb
+*.pyc
+*.pyd
+
+data/
+.ipynb_checkpoints
