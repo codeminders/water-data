@@ -5,4 +5,5 @@
 *.pyd
 
 data/
+build/
 .ipynb_checkpoints

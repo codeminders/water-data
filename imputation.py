@@ -1,28 +1,8 @@
-def align_measurements(t_meas, y_meas, t_corr, y_corr):
-    dt_corr, n_corr = np.unique(t_corr[1:] - t_corr[:-1], return_counts=True)
-    dt_meas, n_meas = np.unique(t_meas[1:] - t_meas[:-1], return_counts=True)
-    dt = min(dt_corr[np.argmax(n_corr)], dt_meas[np.argmax(n_meas)])
-    
-    offset_corr = max(t_corr[0] - t_meas[0], 0)
-    offset_meas = max(t_meas[0] - t_corr[0], 0)
-    N = (max(t_corr[-1], t_meas[-1]) - min(t_corr[0], t_meas[0])) // dt + 1
-    
-    y_corr_new = np.zeros(N) - 1
-    y_meas_new = np.zeros(N) - 1
-    
-    idx_corr = np.cumsum((t_corr[1:] - t_corr[:-1]) // dt) + offset_corr // dt
-    idx_meas = np.cumsum((t_meas[1:] - t_meas[:-1]) // dt) + offset_meas // dt
-    
-    y_corr_new[idx_corr] = y_corr[1:]
-    y_meas_new[idx_meas] = y_meas[1:]
-    
-    y_corr_new[0] = y_corr[0]
-    y_meas_new[0] = y_meas[0]
-    
-    return y_meas_new, y_corr_new
+from solve_cubic import *
+import numpy as np
 
 
-def bezier_interpolator(x_a, y_a, dy_a, x_b, y_b, dy_b, x):
+def bezier_interpolator(x_a, y_a, dy_a, x_b, y_b, dy_b, x, eps = 1e-10):
     if x.size == 2:
         By = np.array([y_a, 0.5*(y_a + y_b)])
     
@@ -33,13 +13,27 @@ def bezier_interpolator(x_a, y_a, dy_a, x_b, y_b, dy_b, x):
         y_1 = y_a + dy_a*(x_1 - x_a)        
         y_2 = y_b + dy_b*(x_2 - x_b)        
         t = np.zeros(x.size)
+        
+        coef = np.array([x_b - 3*x_2 + 3*x_1 - 1*x_a, 
+                               3*x_2 - 6*x_1 - 3*x_a, 
+                                       3*x_1 - 3*x_a, 
+                                               1*x_a])
         for i in range(x.size):
-            r = np.roots([x_b - 3*x_2 + 3*x_1 - 1*x_a,
-                                3*x_2 - 6*x_1 - 3*x_a,
-                                        3*x_1 - 3*x_a,
-                                                1*x_a - x[i]])
-            idx = np.where(np.logical_and(r <= 1, r >= 0))[0][0]
-            t[i] = r[idx]
+            coef[3] = x_a - x[i]
+            R = solve_cubic(coef[0], coef[1], coef[2], coef[3])
+
+            if abs(R['r0'].imag) < eps and 0-eps <= R['r0'].real <= 1+eps:
+                t[i] = R['r0'].real
+                
+            elif abs(R['r1'].imag) < eps and 0-eps <= R['r1'].real <= 1+eps:
+                t[i] = R['r1'].real
+                
+            elif abs(R['r2'].imag) < eps and 0-eps <= R['r2'].real <= 1+eps:
+                t[i] = R['r2'].real
+                
+            else:
+                raise Exception("Bezier interpolation: no real solution found.")
+            
         By = (1-t)**3 * y_a + 3*t*(1-t)**2 * y_1 + 3*(1-t)*t**2 * y_2 + t**3 * y_b
         
     return By
@@ -58,71 +52,48 @@ def get_bisector(x, y, xl, yl, xr, yr):
     return y3
 
 
-def fix_sampling_rate(y, d, interpolation='const'):
+def fill_gaps(y, max_gap = 10000, spike_size=2, window_size=10):
     z = y.copy()
-    k = 0
-    flag = False
-    for i in range(1, z.size):        
-        if z[i] <= 0 and z[i-1] > 0:
-            flag = True  
-        if z[i] > 0 and z[i-1] > 0:
-            flag = False
-        if z[i] <= 0 and z[i-1] <= 0 and flag:
-            k += 1            
-        if z[i] > 0 and z[i-1] <= 0 and flag:
-            if k <= d-1:
-                if interpolation == 'const':
-                    z[i-k-1:i] = z[i-k-2]
-                elif interpolation == 'linear':
-                    z[i-k-1:i] = z[i-k-2] + (z[i] - z[i-k-2])*np.linspace(0,1,k+3)[1:-1]
-            else:
-                flag = False
-            k = 0
-    return z
+    a = b = 0
+    gap_size = 0
 
-
-def fill_gaps(y, max_gap = 10000, window = 10):
-    z = y.copy()
-    a = b = c = d = 0
-    k = 0
-    flag = False
-    
-    for i in range(1, z.size): 
+    for i in range(1, y.size):
         
-        if z[i] <= 0 and z[i-1] > 0:
-            flag = True  
+        if y[i] > 0:
+            a = b; b = i  # a, b are non-negative gap bounds          
             
-        elif z[i] > 0 and z[i-1] > 0:
-            a = b; b = c; c = d; d = i
-            flag = False
-            
-        elif z[i] <= 0 and z[i-1] <= 0 and flag:
-            k += 1   
-            
-        elif z[i] > 0 and z[i-1] <= 0 and flag:
-            a = b; b = c; c = d; d = i 
-            
-        if b != 0 and c-b > 1: 
-            if k <= max_gap-1:
-                if b-a > 1 or (b-a < 2 and z[a-1] < 0):
-                    dy_b = get_bisector(b, z[b], a, z[a], c, z[c])
+            if b - a > 1 and gap_size < max_gap:                
+                # left bounding condition
+                j = 0
+                while ( y[a - j] > 0 and a - j > 0 and j < window_size ) : 
+                    j += 1
+
+                if j <= spike_size:
+                    p = 0
+                    while ( y[a - j - p] < 0 and j + p < max_gap ) : p += 1
+                    dy_a = get_bisector(a, y[a], a-j-p, y[a-j-p], b, y[b])                     
                 else:
-                    j = a-1
-                    while a-j < window and z[j] > 0:
-                        j -= 1
-                    dy_b = (z[b] - z[max(a-j, 0)]) / j
-                    
-                if (d-c > 1) or (d-c < 2 and z[d+1] < 0):
-                    dy_c = get_bisector(c, z[c], b, z[b], d, z[d])
-                else:
-                    j = d+1
-                    while j-d < window and z[j] > 0:
-                        j += 1
-                    dy_c = (z[min(d+j, z.size-1)] - z[c]) / j
-                    
-                z[b:c] = bezier_interpolator(0, z[b], dy_b, c-b, z[c], dy_c, np.arange(c-b))
+                    p = 0
+                    dy_a = (y[a] - y[a-j+1]) / j  
+
+                #right bounding condition
+                k = 0
+                while ( y[b + k] > 0 and b + k < y.size-1 and k < window_size ) : 
+                    k += 1     
                 
-            else:
-                flag = False
-            k = 0
-    return z
+                if k <= spike_size:    
+                    q = 0
+                    while ( y[b + k + q] < 0 and k + q < max_gap ) : q += 1
+                    dy_b = get_bisector(b, y[b], a, y[a], b + k + q, y[b + k + q])                     
+                else:
+                    q = 0
+                    dy_b = (y[b+k-1] - y[b]) / k
+                    
+                z[a:b] = bezier_interpolator(0, y[a], dy_a, b-a, y[b], dy_b, np.arange(b-a))
+                
+            gap_size = 0
+            
+        else:
+            gap_size += 1
+                
+    return np.array(z)
