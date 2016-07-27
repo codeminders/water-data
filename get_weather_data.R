@@ -6,7 +6,7 @@ setwd("~/Veronika/USGS")
 dir.create("~/Veronika/USGS/weatherSite", showWarnings = TRUE, recursive = FALSE, mode = "0777")
 sites <- read.csv("sites.csv")
 sites$SITE_NO <- as.factor(sites$SITE_NO)
-sites <- sites[sites$SITE_NO != "9535300",]
+#sites <- sites[sites$SITE_NO != "9535300",]
 
 #icao is for city abreviation
 #date format = "YYYY/MM/DD"
@@ -57,7 +57,7 @@ getweatherData <- function(dateStart, dateEnd, lat, long){
 
 errors <- c()
 system.time(
-  for(j in sites[, "SITE_NO"][450:507]){
+  for(j in sites[, "SITE_NO"]){
     tryCatch({
       lat = sites[which(sites$SITE_NO == j), "DEC_LAT_VA"]
       long = sites[which(sites$SITE_NO == j), "DEC_LONG_V"]
@@ -79,11 +79,14 @@ system.time(
     },
     
     error = function(e) {
-      #print(paste("error with", j));
-      errors <- c(errors, j) }
+      print(paste("error with", j))}
+      #errors <- c(errors, j) }
     )
     print("done")
   }
 )
 
-
+#sites with no weather info
+noweather <- which((!paste0(0,as.character(sites$SITE_NO)) %in% substr(list.files("~/Veronika/USGS/weatherSite"), 1, 8)) &
+        (!as.character(sites$SITE_NO) %in% substr(list.files("~/Veronika/USGS/weatherSite"), 1, 8)))
+sites[noweather, 1]
