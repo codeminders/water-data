@@ -58,3 +58,72 @@ def weiner(steps=1000, m=0, sigma=1):
     for i in range(1,steps):
         y[i] = y[i-1] + m + sigma*np.random.randn()
     return y
+
+
+def get_data(db, site_id):
+    to_shift = {
+        14137000 : -687,
+        7377500  : +2,
+        8186500  : +2,
+        11456000 : +2
+    }
+
+    to_skip = {
+        14178000: 1,
+        50136400: 1,
+        50075000: 1,
+        50065500: 1,
+        9481740:  1
+    }
+    
+    data_m = db['measured'].find_one({'site_no': site_id})
+    data_c = db['corrected'].find_one({'site_no': site_id})
+    
+    if data_m is None or data_c is None or site_id in to_skip:
+        raise Exception("Site not found")
+        
+    Tm = np.array(data_m['utc'], dtype=np.int32)
+    Zm = np.array(data_m['gh'],  dtype=np.float32)
+    
+    Tc = np.array(data_c['utc'], dtype=np.int32)
+    Zc = np.array(data_c['gh'],  dtype=np.float32)
+    
+    if site_id in to_shift:
+        Zm += to_shift[site_id]
+        Zc += to_shift[site_id]
+    
+    return Tm, Zm, Tc, Zc 
+
+
+def align_measurements(t_meas, y_meas, t_corr, y_corr):
+    dt_corr, n_corr = np.unique(t_corr[1:] - t_corr[:-1], return_counts=True)
+    dt_meas, n_meas = np.unique(t_meas[1:] - t_meas[:-1], return_counts=True)
+    dt = min(dt_corr[np.argmax(n_corr)], dt_meas[np.argmax(n_meas)])
+    
+    offset_corr = max(t_corr[0] - t_meas[0], 0)
+    offset_meas = max(t_meas[0] - t_corr[0], 0)
+    N = (max(t_corr[-1], t_meas[-1]) - min(t_corr[0], t_meas[0])) // dt + 1
+    
+    y_corr_new = np.zeros(N) - 1
+    y_meas_new = np.zeros(N) - 1
+    
+    idx_corr = np.cumsum((t_corr[1:] - t_corr[:-1]) // dt) + offset_corr // dt
+    idx_meas = np.cumsum((t_meas[1:] - t_meas[:-1]) // dt) + offset_meas // dt
+    
+    y_corr_new[idx_corr] = y_corr[1:]
+    y_meas_new[idx_meas] = y_meas[1:]
+    
+    y_corr_new[0] = y_corr[0]
+    y_meas_new[0] = y_meas[0]
+    
+    return y_meas_new, y_corr_new
+
+
+def mark_anomaly(y_m, y_c, anomaly_thresh):
+    return np.logical_and(y_m > 0, np.abs(y_c - y_m) > anomaly_thresh)
+
+def feet_to_meters(y):
+    return y * 0.3048
+
+def meters_to_feet(y):
+    return y / 0.3048
