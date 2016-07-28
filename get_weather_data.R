@@ -6,7 +6,11 @@ setwd("~/Veronika/USGS")
 dir.create("~/Veronika/USGS/weatherSite", showWarnings = TRUE, recursive = FALSE, mode = "0777")
 sites <- read.csv("sites.csv")
 sites$SITE_NO <- as.factor(sites$SITE_NO)
+<<<<<<< HEAD
 sites <- sites[sites$SITE_NO != "9535300",]
+=======
+#sites <- sites[sites$SITE_NO != "9535300",]
+>>>>>>> 8d139883cd20b3a0c03faed7777881adef86f2c2
 
 #icao is for city abreviation
 #date format = "YYYY/MM/DD"
@@ -57,7 +61,11 @@ getweatherData <- function(dateStart, dateEnd, lat, long){
 
 errors <- c()
 system.time(
+<<<<<<< HEAD
   for(j in sites[, "SITE_NO"][450:507]){
+=======
+  for(j in sites[, "SITE_NO"]){
+>>>>>>> 8d139883cd20b3a0c03faed7777881adef86f2c2
     tryCatch({
       lat = sites[which(sites$SITE_NO == j), "DEC_LAT_VA"]
       long = sites[which(sites$SITE_NO == j), "DEC_LONG_V"]
@@ -79,11 +87,23 @@ system.time(
     },
     
     error = function(e) {
+<<<<<<< HEAD
       #print(paste("error with", j));
       errors <- c(errors, j) }
+=======
+      print(paste("error with", j))}
+      #errors <- c(errors, j) }
+>>>>>>> 8d139883cd20b3a0c03faed7777881adef86f2c2
     )
     print("done")
   }
 )
 
+<<<<<<< HEAD
 
+=======
+#sites with no weather info
+noweather <- which((!paste0(0,as.character(sites$SITE_NO)) %in% substr(list.files("~/Veronika/USGS/weatherSite"), 1, 8)) &
+        (!as.character(sites$SITE_NO) %in% substr(list.files("~/Veronika/USGS/weatherSite"), 1, 8)))
+sites[noweather, 1]
+>>>>>>> 8d139883cd20b3a0c03faed7777881adef86f2c2
