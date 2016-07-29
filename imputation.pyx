@@ -134,7 +134,7 @@ def fill_gaps(y, int max_gap=10000, int spike_size=2, int window_size=10):
 
                 if j <= spike_size:
                     p = 0
-                    while ( y[a - j - p] < 0 and j + p < max_gap ) : p += 1
+                    while ( y[a - j - p] < 0 and j + p < max_gap and a - j - p > 0 ) : p += 1
                     dy_a = get_bisector(a, y[a], a-j-p, y[a-j-p], b, y[b])                     
                 else:
                     p = 0
@@ -147,7 +147,7 @@ def fill_gaps(y, int max_gap=10000, int spike_size=2, int window_size=10):
                 
                 if k <= spike_size:    
                     q = 0
-                    while ( y[b + k + q] < 0 and k + q < max_gap ) : q += 1
+                    while ( y[b + k + q] < 0 and k + q < max_gap and b + k + q < n - 1 ) : q += 1
                     dy_b = get_bisector(b, y[b], a, y[a], b + k + q, y[b + k + q])                     
                 else:
                     q = 0

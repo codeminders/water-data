@@ -1,51 +1,10 @@
 import numpy as np
-import pandas as pd
-import scipy.stats
+from gcd import *
 
 # one-liners
 mse = lambda y_true, y_pred : np.mean(np.square(y_true - y_pred))
 mae = lambda y_true, y_pred : np.mean(np.abs(y_true - y_pred))
 mape = lambda y_true, y_pred : np.mean(np.abs(y_true - y_pred) / np.abs(y_true)) * 100
-volatility = lambda prices : np.square(prices[1:] - prices[:-1])
-raw_return = lambda prices : (prices[1:] - prices[:-1]) / prices[:-1]
-log_return = lambda prices : np.log(prices[1:] / prices[:-1])
-raw_return_inv = lambda prev, ret : prev * (ret + 1)
-log_return_inv = lambda prev, log_ret : prev * np.exp(log_ret)
-autocorr = lambda x, q : np.array([np.corrcoef(x[k:], x[:-k])[0,1] for k in range(1,q+1)])
-
-
-class Dataset:
-    
-    def __init__(self, ts, lags, shift=0.0):
-        idx = np.unique(np.append(np.array(lags), 0))[::-1]        
-        ds = np.array([ts[i-idx].tolist() for i in range(idx[0], ts.size)])
-        self.X = ds[:,:-1]
-        self.y = ds[:,-1] 
-        self.max_val = ts.max()
-        self.min_val = ts.min() 
-        self.shift = shift
-        self.ranges = np.array([self.X.min(axis=0), self.X.max(axis=0)]).T
-    
-    def get_scaled(self):
-        X_scaled = (self.X - self.min_val) / (self.max_val - self.min_val) + self.shift
-        y_scaled = (self.y - self.min_val) / (self.max_val - self.min_val) + self.shift
-        ranges_scaled = (self.ranges - self.min_val) / (self.max_val - self.min_val) + self.shift
-        return X_scaled, y_scaled , ranges_scaled              
-        
-    def get(self):
-        return self.X, self.y, self.ranges
-    
-    def inv_scale(self, X):
-        return self.min_val + (self.max_val - self.min_val)*X - self.shift
-    
-    
-def load_raw_data(path):
-    func = lambda x : time.mktime(dt.datetime.strptime(' '.join([x[0], x[1]]), "%d/%m/%y %H:%M:%S").timetuple())
-    ts_data = pd.read_csv(path)
-    ts_data.columns = ['date', 'time', 'open', 'high', 'low', 'close', 'vol']
-    ts_data.drop(['high', 'low', 'close', 'vol'], axis=1, inplace=True)
-    ts_data['timestamp'] = ts_data.apply(func, axis=1)
-    return ts_data
 
 
 def autocorr_full(x, q = 0):
@@ -54,10 +13,7 @@ def autocorr_full(x, q = 0):
 
 
 def weiner(steps=1000, m=0, sigma=1):
-    y = np.zeros(steps)
-    for i in range(1,steps):
-        y[i] = y[i-1] + m + sigma*np.random.randn()
-    return y
+    return np.cumsum(m + sigma*np.random.randn(steps))
 
 
 def get_data(db, site_id):
@@ -95,28 +51,33 @@ def get_data(db, site_id):
     return Tm, Zm, Tc, Zc 
 
 
-def align_measurements(t_meas, y_meas, t_corr, y_corr):
-    dt_corr, n_corr = np.unique(t_corr[1:] - t_corr[:-1], return_counts=True)
-    dt_meas, n_meas = np.unique(t_meas[1:] - t_meas[:-1], return_counts=True)
-    dt = min(dt_corr[np.argmax(n_corr)], dt_meas[np.argmax(n_meas)])
+def align_measurements(t_a, y_a, t_b, y_b, gcd_dt = True):
+    dt_a = t_a[1:] - t_a[:-1]
+    dt_b = t_b[1:] - t_b[:-1]
     
-    offset_corr = max(t_corr[0] - t_meas[0], 0)
-    offset_meas = max(t_meas[0] - t_corr[0], 0)
-    N = (max(t_corr[-1], t_meas[-1]) - min(t_corr[0], t_meas[0])) // dt + 1
+    dt_bu, n_b = np.unique(dt_b, return_counts = True)
+    dt_au, n_a = np.unique(dt_a, return_counts = True)
     
-    y_corr_new = np.zeros(N) - 1
-    y_meas_new = np.zeros(N) - 1
+    if gcd_dt:
+        dt_u = np.hstack([dt_au, dt_bu]).astype(np.int64)
+        dt = gcd(np.abs(dt_u[dt_u != 0]))
+    else:
+        dt = min(dt_bu[np.argmax(n_b)], dt_au[np.argmax(n_a)])
     
-    idx_corr = np.cumsum((t_corr[1:] - t_corr[:-1]) // dt) + offset_corr // dt
-    idx_meas = np.cumsum((t_meas[1:] - t_meas[:-1]) // dt) + offset_meas // dt
+    offset_b = max(t_b[0] - t_a[0], 0)
+    offset_a = max(t_a[0] - t_b[0], 0)
+    N = (max(t_b[-1], t_a[-1]) - min(t_b[0], t_a[0])) // dt + 1
     
-    y_corr_new[idx_corr] = y_corr[1:]
-    y_meas_new[idx_meas] = y_meas[1:]
+    y_b_new = np.zeros(N) - 1
+    y_a_new = np.zeros(N) - 1
     
-    y_corr_new[0] = y_corr[0]
-    y_meas_new[0] = y_meas[0]
+    idx_b = (t_b - t_b[0]) // dt
+    idx_a = (t_a - t_a[0]) // dt
     
-    return y_meas_new, y_corr_new
+    y_b_new[idx_b] = y_b
+    y_a_new[idx_a] = y_a
+    
+    return dt, y_a_new, y_b_new
 
 
 def mark_anomaly(y_m, y_c, anomaly_thresh):
