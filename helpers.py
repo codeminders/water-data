@@ -80,8 +80,8 @@ def align_measurements(t_a, y_a, t_b, y_b, gcd_dt = True):
     return dt, y_a_new, y_b_new
 
 
-def mark_anomaly(y_m, y_c, anomaly_thresh):
-    return np.logical_and(y_m > 0, np.abs(y_c - y_m) > anomaly_thresh)
+def mark_anomaly(measured, computed, anomaly_thresh):
+    return np.logical_and(measured > 0, np.abs(measured - computed) > anomaly_thresh)
 
 def feet_to_meters(y):
     return y * 0.3048
