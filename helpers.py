@@ -2,9 +2,11 @@ import numpy as np
 from gcd import *
 
 # one-liners
-mse = lambda y_true, y_pred : np.mean(np.square(y_true - y_pred))
-mae = lambda y_true, y_pred : np.mean(np.abs(y_true - y_pred))
+mse  = lambda y_true, y_pred : np.mean(np.square(y_true - y_pred))
+mae  = lambda y_true, y_pred : np.mean(np.abs(y_true - y_pred))                        # Mean Absolute Error
+xae  = lambda y_true, y_pred : np.max(np.abs(y_true - y_pred))                         # maXimum Absolute Error
 mape = lambda y_true, y_pred : np.mean(np.abs(y_true - y_pred) / np.abs(y_true)) * 100
+rmse = lambda y_true, y_pred : np.sqrt(np.mean(np.square(y_true - y_pred)))
 
 
 def autocorr_full(x, q = 0):
