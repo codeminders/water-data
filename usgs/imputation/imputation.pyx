@@ -1,5 +1,6 @@
 import cython
 import numpy as np
+import numpy.ma as ma
 cimport numpy as np
 
 
@@ -44,11 +45,9 @@ cdef roots solve_cubic(float a, float b, float c, float d):
 
 @cython.boundscheck(False)
 @cython.wraparound(False)
-def bezier_interpolator(double x_a, double y_a, double dy_a, 
-                        double x_b, double y_b, double dy_b, 
-                        x, 
-                        double eps = 1e-10):
-    
+def bezier_spline(double x_a, double y_a, double dy_a, 
+                  double x_b, double y_b, double dy_b, 
+                  x, double eps = 1e-10):    
     cdef: 
         int n = x.size
         double x_1, x_2, y_1, y_2
@@ -74,22 +73,37 @@ def bezier_interpolator(double x_a, double y_a, double dy_a,
         for i in range(n):
             c_0 = x_a - x[i]
             R = solve_cubic(c_3, c_2, c_1, c_0)
-
             if abs(R.r0.imag) < eps and -eps <= R.r0.real <= 1+eps:
-                t[i] = R.r0.real
-                
+                t[i] = R.r0.real                
             elif abs(R.r1.imag) < eps and -eps <= R.r1.real <= 1+eps:
-                t[i] = R.r1.real
-                
+                t[i] = R.r1.real                
             elif abs(R.r2.imag) < eps and -eps <= R.r2.real <= 1+eps:
-                t[i] = R.r2.real
-                
+                t[i] = R.r2.real                
             else:
                 raise Exception("Bezier interpolation: no real solution found.")
             
         By = (1-t)**3 * y_a + 3*t*(1-t)**2 * y_1 + 3*(1-t)*t**2 * y_2 + t**3 * y_b
         
     return By
+
+
+@cython.boundscheck(False)
+@cython.wraparound(False)
+def linear_interpolator(y, int max_gap=10000):
+    cdef:
+        int a = 0, b = 0, i = 1, gap_size = 0, n = y.size
+    z = y.copy()
+    for i in range(1, n):        
+        if ~y.mask[i]:
+            a = b; b = i  # a, b are non-negative gap bounds            
+            if b-a > 1 and gap_size < max_gap:      
+                fill = np.linspace(y.data[a], y.data[b], b-a+1)
+                z.data[a:b+1] = fill
+                z.mask[a:b+1] = False
+            gap_size = 0            
+        else:
+            gap_size += 1
+    return z
 
 
 @cython.cdivision(True)
@@ -110,54 +124,43 @@ cdef double get_bisector(double x, double y,
 @cython.boundscheck(False)
 @cython.wraparound(False)
 @cython.cdivision(True)
-def fill_gaps(y, int max_gap=10000, int spike_size=2, int window_size=10):
-    
-    cdef: 
-        
+def bezier_interpolator(y, mask, int max_gap=10000, int window_size=10):
+    cdef:         
         double dy_a, dy_b
         int a = 0, b = 0, p = 0, q = 0, i = 0, j = 0, k = 0
         int n = y.size
         int gap_size = 0
-
     z = y.copy()
         
-    for i in range(1, n):
-        
-        if y[i] > 0:
-            a = b; b = i  # a, b are non-negative gap bounds          
-            
-            if b - a > 1 and gap_size < max_gap:                
+    for i in range(1, n):        
+        if mask[i] > 0:
+            a = b; b = i  # a, b are non-negative gap bounds            
+            if b-a > 1 and gap_size < max_gap:                
                 # left bounding condition
-                j = 0
-                while ( y[a - j] > 0 and a - j > 0 and j < window_size ) : 
-                    j += 1
-
-                if j <= spike_size:
-                    p = 0
-                    while ( y[a - j - p] < 0 and j + p < max_gap and a - j - p > 0 ) : p += 1
+                j = 0; p = 0
+                while ( y[a-j] > 0 and a-j > 0 and j < window_size ) : j += 1
+                if j <= 2:                    
+                    while ( y[a-j-p] < 0 and j+p < max_gap and a-j-p > 0 ) : p += 1
                     dy_a = get_bisector(a, y[a], a-j-p, y[a-j-p], b, y[b])                     
                 else:
-                    p = 0
                     dy_a = (y[a] - y[a-j+1]) / j  
 
                 #right bounding condition
-                k = 0
-                while ( y[b + k] > 0 and b + k < n-1 and k < window_size ) : 
-                    k += 1     
-                
-                if k <= spike_size:    
-                    q = 0
-                    while ( y[b + k + q] < 0 and k + q < max_gap and b + k + q < n - 1 ) : q += 1
-                    dy_b = get_bisector(b, y[b], a, y[a], b + k + q, y[b + k + q])                     
+                k = 0; q = 0
+                while ( y[b+k] > 0 and b+k < n-1 and k < window_size ) : k += 1                 
+                if k <= 2:                    
+                    while ( y[b+k+q] < 0 and k+q < max_gap and b+k+q < n-1 ) : q += 1
+                    dy_b = get_bisector(b, y[b], a, y[a], b+k+q, y[b+k+q])                     
                 else:
-                    q = 0
-                    dy_b = (y[b + k - 1] - y[b]) / k
-                    
-                z[a:b] = bezier_interpolator(0, y[a], dy_a, b-a, y[b], dy_b, np.arange(b-a))
-                
-            gap_size = 0
+                    dy_b = (y[b+k-1] - y[b]) / k
             
+                z[a:b] = bezier_spline(0, y[a], dy_a, b-a, y[b], dy_b, np.arange(b-a))
+
+            gap_size = 0            
         else:
             gap_size += 1
                 
     return z
+
+
+
