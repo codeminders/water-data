@@ -121,10 +121,11 @@ cdef double get_bisector(double x, double y,
     cdef double y3 = (y1 / x1_n + y2 / x2_n) / (x1 / x1_n + x2 / x2_n)
     return y3
 
+
 @cython.boundscheck(False)
 @cython.wraparound(False)
 @cython.cdivision(True)
-def bezier_interpolator(y, mask, int max_gap=10000, int window_size=10):
+def bezier_interpolator(y, int max_gap=10000, int window_size=10):
     cdef:         
         double dy_a, dy_b
         int a = 0, b = 0, p = 0, q = 0, i = 0, j = 0, k = 0
@@ -133,34 +134,31 @@ def bezier_interpolator(y, mask, int max_gap=10000, int window_size=10):
     z = y.copy()
         
     for i in range(1, n):        
-        if mask[i] > 0:
+        if ~y.mask[i]:
             a = b; b = i  # a, b are non-negative gap bounds            
             if b-a > 1 and gap_size < max_gap:                
                 # left bounding condition
                 j = 0; p = 0
-                while ( y[a-j] > 0 and a-j > 0 and j < window_size ) : j += 1
+                while ( y.data[a-j] > 0 and a-j > 0 and j < window_size ) : j += 1
                 if j <= 2:                    
-                    while ( y[a-j-p] < 0 and j+p < max_gap and a-j-p > 0 ) : p += 1
-                    dy_a = get_bisector(a, y[a], a-j-p, y[a-j-p], b, y[b])                     
+                    while ( y.data[a-j-p] < 0 and j+p < max_gap and a-j-p > 0 ) : p += 1
+                    dy_a = get_bisector(a, y.data[a], a-j-p, y.data[a-j-p], b, y.data[b])                     
                 else:
-                    dy_a = (y[a] - y[a-j+1]) / j  
+                    dy_a = (y.data[a] - y.data[a-j+1]) / j  
 
                 #right bounding condition
                 k = 0; q = 0
-                while ( y[b+k] > 0 and b+k < n-1 and k < window_size ) : k += 1                 
+                while ( y.data[b+k] > 0 and b+k < n-1 and k < window_size ) : k += 1                 
                 if k <= 2:                    
-                    while ( y[b+k+q] < 0 and k+q < max_gap and b+k+q < n-1 ) : q += 1
-                    dy_b = get_bisector(b, y[b], a, y[a], b+k+q, y[b+k+q])                     
+                    while ( y.data[b+k+q] < 0 and k+q < max_gap and b+k+q < n-1 ) : q += 1
+                    dy_b = get_bisector(b, y.data[b], a, y.data[a], b+k+q, y.data[b+k+q])                     
                 else:
-                    dy_b = (y[b+k-1] - y[b]) / k
+                    dy_b = (y.data[b+k-1] - y.data[b]) / k
             
-                z[a:b] = bezier_spline(0, y[a], dy_a, b-a, y[b], dy_b, np.arange(b-a))
+                z[a:b] = bezier_spline(0, y.data[a], dy_a, b-a, y.data[b], dy_b, np.arange(b-a))
 
             gap_size = 0            
         else:
             gap_size += 1
                 
     return z
-
-
-

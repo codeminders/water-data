@@ -31,16 +31,16 @@ class TS:
 
 def get_data(db, site_id):    
     data_m = db['measured'].find_one({'site_no': site_id})
-    data_c = db['corrected'].find_one({'site_no': site_id})
+    data_c = db['computed'].find_one({'site_no': site_id})
     
     if data_m is None or data_c is None or site_id in to_skip:
         raise Exception("Site not found")
         
     y_m = TS(np.array(data_m['utc'], dtype = np.int32),
-             np.array(data_m['gh'],  dtype = np.float32)
+             np.array(data_m['gh'],  dtype = np.float32))
     
     y_c = TS(np.array(data_c['utc'], dtype = np.int32), 
-             np.array(data_c['gh'],  dtype = np.float32)
+             np.array(data_c['gh'],  dtype = np.float32))
     
     if site_id in to_shift:
         y_m['y'] += to_shift[site_id]
